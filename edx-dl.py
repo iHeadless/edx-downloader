@@ -230,8 +230,7 @@ def parse_args():
     parser.add_argument('-w',
                         '--week',
                         action='store',
-                        type=int,
-                        help='Week number (number on the list of --list)',
+                        help='Week number (number on the list of --list or "*")',
                         default=None)
     parser.add_argument('-l',
                         '--list',
@@ -340,13 +339,23 @@ def main():
     for week in weeks:
         w += 1
         print('%d - Download %s videos' % (w, week[0].strip()))
-    print('%d - Download them all' % (numOfWeeks + 1))
     if args.list_weeks:
+        print('* - Download them all')
         sys.exit(1)
+    else:
+        print('%d - Download them all' % (numOfWeeks + 1))
     if args.week:
-        w_number = args.week
-        w_name = weeks[w_number-1][0].strip()
-        print("[info] Downloading item # " + str(w_number) + ": " + w_name)
+        if args.week.isnumeric():
+            w_number = int(args.week)
+            w_name = weeks[w_number-1][0].strip()
+            print("[info] Downloading item # " + str(w_number) + ": " + w_name)
+        else:
+            if args.week == "*":
+                w_number == numOfWeeks + 1
+                print("[info] Downloading all items")
+            else:
+                print("[error] -w need number or *")
+                sys.exit(2)
     else:
         w_number = int(input('Enter Your Choice: '))
     while w_number > numOfWeeks + 1:
