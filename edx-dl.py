@@ -267,7 +267,9 @@ def main():
     USERNAME = data.find_all('span')[1].string
     COURSES = soup.find_all('article', 'course')
     courses = []
+    c = 0
     for COURSE in COURSES:
+        c += 1
         c_name = COURSE.h3.text.strip()
         c_link = BASE_URL + COURSE.a['href']
         if c_link.endswith('info') or c_link.endswith('info/'):
@@ -275,6 +277,9 @@ def main():
         else:
             state = 'Not yet'
         courses.append((c_name, c_link, state))
+        if c_link.rstrip("/") == args.course_id.rstrip("/"):
+            c_number = c
+            c_name_selected = c_name
     numOfCourses = len(courses)
 
     # Welcome and Choose Course
@@ -287,7 +292,11 @@ def main():
         c += 1
         print('%d - %s -> %s' % (c, course[0], course[2]))
 
-    c_number = int(input('Enter Course Number: '))
+    if not c_number:
+        c_number = int(input('Enter Course Number: '))
+    else:
+        print("[info] Downloading course " + str(c_number) + ": " + c_name_selected)
+
     while c_number > numOfCourses or courses[c_number - 1][2] != 'Started':
         print('Enter a valid Number for a Started Course ! between 1 and ',
               numOfCourses)
