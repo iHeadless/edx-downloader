@@ -345,7 +345,7 @@ def main():
         sys.exit(1)
     if args.week:
         w_number = args.week
-        w_name = weeks[w_number][0].strip()
+        w_name = weeks[w_number-1][0].strip()
         print("[info] Downloading item # " + str(w_number) + ": " + w_name)
     else:
         w_number = int(input('Enter Your Choice: '))
