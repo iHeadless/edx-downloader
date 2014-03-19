@@ -222,6 +222,7 @@ def parse_args():
     parser.add_argument('-w',
                     '--week',
                     action='store',
+                    type=int,
                     help='Week number (number on the list of --list)',
                     default=None)
     parser.add_argument('-l',
