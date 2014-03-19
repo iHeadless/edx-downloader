@@ -43,6 +43,8 @@ import os
 import os.path
 import re
 import sys
+import unicodedata
+import string
 
 from subprocess import Popen, PIPE
 from datetime import timedelta, datetime
@@ -74,6 +76,12 @@ DEFAULT_USER_AGENTS = {"chrome": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/53
                        "edx": 'edX-downloader/0.01'}
 
 USER_AGENT = DEFAULT_USER_AGENTS["edx"]
+
+validFilenameChars = "-_.() %s%s" % (string.ascii_letters, string.digits)
+
+def removeDisallowedFilenameChars(filename):
+    cleanedFilename = unicodedata.normalize('NFKD', filename).encode('ASCII', 'ignore')
+    return ''.join(c for c in cleanedFilename if c in validFilenameChars)
 
 def change_openedx_site(site_name):
     global BASE_URL
@@ -337,6 +345,8 @@ def main():
         sys.exit(1)
     if args.week:
         w_number = args.week
+        w_name = weeks[w_number][0].strip()
+        print("[info] Downloading item № " + str(w_number) + ": " + w_name)
     else:
         w_number = int(input('Enter Your Choice: '))
     while w_number > numOfWeeks + 1:
@@ -389,8 +399,9 @@ def main():
     c = 0
     for v, s in zip(video_link, subsUrls):
         c += 1
+        w_folder = removeDisallowedFilenameChars(w_name)
         target_dir = os.path.join(args.output_dir,
-                                  directory_name(selected_course[0]))
+                                  directory_name(selected_course[0]),w_folder)
         filename_prefix = str(c).zfill(2)
         cmd = ["youtube-dl",
                "-o", os.path.join(target_dir, filename_prefix + "-%(title)s.%(ext)s")]
