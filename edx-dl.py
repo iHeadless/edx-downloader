@@ -174,7 +174,6 @@ def parse_args():
                                      'see the file README.md',)
     # positional
     parser.add_argument('course_id',
-                        nargs='*',
                         action='store',
                         default=None,
                         help='target course id '
