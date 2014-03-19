@@ -346,7 +346,7 @@ def main():
     if args.week:
         w_number = args.week
         w_name = weeks[w_number][0].strip()
-        print("[info] Downloading item № " + str(w_number) + ": " + w_name)
+        print("[info] Downloading item # " + str(w_number) + ": " + w_name)
     else:
         w_number = int(input('Enter Your Choice: '))
     while w_number > numOfWeeks + 1:
