@@ -214,6 +214,12 @@ def parse_args():
                         dest='platform',
                         help='OpenEdX platform, currently either "edx" or "stanford"',
                         default='edx')
+    parser.add_argument('-r',
+                    '--rate-limit',
+                    action='store',
+                    dest='ratelimit',
+                    help='Limit the download speed to the specified maximum L (e.g., 50k or 44.6m)',
+                    default=None)
 
     args = parser.parse_args()
     return args
@@ -370,7 +376,11 @@ def main():
             cmd.append(args.format + '/mp4')
         if args.subtitles:
             cmd.append('--write-sub')
+        if args.ratelimit:
+            cmd.append('--rate-limit='+args.ratelimit)
         cmd.append(str(v))
+
+        print("[info] youtube-dl: " + ' '.join(cmd))
 
         popen_youtube = Popen(cmd, stdout=PIPE, stderr=PIPE)
 
