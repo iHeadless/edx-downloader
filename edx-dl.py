@@ -214,22 +214,23 @@ def parse_args():
                         help='OpenEdX platform, currently either "edx" or "stanford"',
                         default='edx')
     parser.add_argument('-r',
-                    '--rate-limit',
-                    action='store',
-                    dest='ratelimit',
-                    help='Limit the download speed to the specified maximum L (e.g., 50k or 44.6m)',
-                    default=None)
+                        '--rate-limit',
+                        action='store',
+                        dest='ratelimit',
+                        help='Limit the download speed to the specified maximum L (e.g., 50k or 44.6m)',
+                        default=None)
     parser.add_argument('-w',
-                    '--week',
-                    action='store',
-                    type=int,
-                    help='Week number (number on the list of --list)',
-                    default=None)
+                        '--week',
+                        action='store',
+                        type=int,
+                        help='Week number (number on the list of --list)',
+                        default=None)
     parser.add_argument('-l',
-                '--list',
-                action='store',
-                help='List weeks in course',
-                default=None)
+                        '--list',
+                        action='store_true',
+                        default=False,
+                        dest='list_weeks',
+                        help='List weeks in course')
 
     args = parser.parse_args()
     return args
@@ -241,7 +242,7 @@ def main():
     # if no args means we are calling the interactive version
     is_interactive = len(sys.argv) == 1
     if is_interactive:
-        args.platform = input('Platform: ')
+        args.platform = input('Platform [edx/stanford]: ')
         args.username = input('Username: ')
         args.password = getpass.getpass()
 
@@ -332,7 +333,7 @@ def main():
         w += 1
         print('%d - Download %s videos' % (w, week[0].strip()))
     print('%d - Download them all' % (numOfWeeks + 1))
-    if args.list:
+    if args.list_weeks:
         sys.exit(1)
     if args.week:
         w_number = args.week
