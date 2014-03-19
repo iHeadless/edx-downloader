@@ -219,6 +219,16 @@ def parse_args():
                     dest='ratelimit',
                     help='Limit the download speed to the specified maximum L (e.g., 50k or 44.6m)',
                     default=None)
+    parser.add_argument('-w',
+                    '--week',
+                    action='store',
+                    help='Week number (number on the list of --list)',
+                    default=None)
+    parser.add_argument('-l',
+                '--list',
+                action='store',
+                help='List weeks in course',
+                default=None)
 
     args = parser.parse_args()
     return args
@@ -295,7 +305,7 @@ def main():
     if not c_number:
         c_number = int(input('Enter Course Number: '))
     else:
-        print("[info] Downloading course " + str(c_number) + ": " + c_name_selected)
+        print("[info] Using course " + str(c_number) + ": " + c_name_selected)
 
     while c_number > numOfCourses or courses[c_number - 1][2] != 'Started':
         print('Enter a valid Number for a Started Course ! between 1 and ',
@@ -321,8 +331,12 @@ def main():
         w += 1
         print('%d - Download %s videos' % (w, week[0].strip()))
     print('%d - Download them all' % (numOfWeeks + 1))
-
-    w_number = int(input('Enter Your Choice: '))
+    if args.list:
+        sys.exit(1)
+    if args.week:
+        w_number = args.week
+    else:
+        w_number = int(input('Enter Your Choice: '))
     while w_number > numOfWeeks + 1:
         print('Enter a valid Number between 1 and %d' % (numOfWeeks + 1))
         w_number = int(input('Enter Your Choice: '))
