@@ -230,7 +230,7 @@ def parse_args():
     parser.add_argument('-w',
                         '--week',
                         action='store',
-                        help='Week number (number on the list of --list or "*")',
+                        help='Week number (number on the list of --list or "all")',
                         default=None)
     parser.add_argument('-l',
                         '--list',
@@ -342,7 +342,7 @@ def main():
     if is_interactive:
         print('%d - Download them all' % (numOfWeeks + 1))
     else:
-        print('* - Download them all')
+        print('"all" - Download them all')
     if args.list_weeks:
         sys.exit(1)
     if args.week:
@@ -351,11 +351,11 @@ def main():
             w_name = weeks[w_number-1][0].strip()
             print("[info] Downloading item # " + str(w_number) + ": " + w_name)
         else:
-            if args.week == "*":
+            if args.week == "all":
                 w_number = numOfWeeks + 1
                 print("[info] Downloading all items")
             else:
-                print("[error] -w need number or *")
+                print('[error] -w need number or "all"')
                 sys.exit(2)
     else:
         w_number = int(input('Enter Your Choice: '))
@@ -379,7 +379,7 @@ def main():
         args.subtitles = input('Download subtitles (y/n)? ').lower() == 'y'
 
     ## need to process week_loop a bit earlier. May be filter like "-w 4-6" or "-w 6,8,2" can be useful
-    if args.week == "*":
+    if args.week == "all":
         week_loop = range(1,numOfWeeks+1)
     else:
         week_loop = [w_number]
@@ -389,7 +389,7 @@ def main():
     for current_week in week_loop:
         links = weeks[current_week - 1][1]
         w_name = weeks[current_week-1][0].strip()
-        print("[info] Processing item # %s" % current_week)
+        print("[info] Processing item # %s  " % current_week)
         video_id = []
         subsUrls = []
         regexpSubs = re.compile(r'data-transcript-translation-url=(?:&#34;|")([^"&]*)(?:&#34;|")')
