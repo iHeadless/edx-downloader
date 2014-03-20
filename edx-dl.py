@@ -339,19 +339,20 @@ def main():
     for week in weeks:
         w += 1
         print('%d - Download %s videos' % (w, week[0].strip()))
-    if args.list_weeks:
-        print('* - Download them all')
-        sys.exit(1)
-    else:
+    if is_interactive:
         print('%d - Download them all' % (numOfWeeks + 1))
+    else:
+        print('* - Download them all')
+    if args.list_weeks:
+        sys.exit(1)
     if args.week:
-        if args.week.isnumeric():
+        if args.week.isdigit():
             w_number = int(args.week)
             w_name = weeks[w_number-1][0].strip()
             print("[info] Downloading item # " + str(w_number) + ": " + w_name)
         else:
             if args.week == "*":
-                w_number == numOfWeeks + 1
+                w_number = numOfWeeks + 1
                 print("[info] Downloading all items")
             else:
                 print("[error] -w need number or *")
@@ -362,38 +363,13 @@ def main():
         print('Enter a valid Number between 1 and %d' % (numOfWeeks + 1))
         w_number = int(input('Enter Your Choice: '))
 
-    if w_number == numOfWeeks + 1:
-        links = [link for week in weeks for link in week[1]]
-    else:
-        links = weeks[w_number - 1][1]
+    ## if w_number == numOfWeeks + 1:
+    ##    links = [link for week in weeks for link in week[1]]
+    ## else:
+    ##    links = weeks[w_number - 1][1]
 
-    video_id = []
-    subsUrls = []
-    regexpSubs = re.compile(r'data-transcript-translation-url=(?:&#34;|")([^"&]*)(?:&#34;|")')
-    splitter = re.compile(r'data-streams=(?:&#34;|").*1.0[0]*:')
-    extra_youtube = re.compile(r'//w{0,3}\.youtube.com/embed/([^ \?&]*)[\?& ]')
-    for link in links:
-        print("Processing '%s'..." % link)
-        page = get_page_contents(link, headers)
 
-        id_container = splitter.split(page)[1:]
-        video_id += [link[:YOUTUBE_VIDEO_ID_LENGTH] for link in
-                     id_container]
-        subsUrls += [BASE_URL + regexpSubs.search(container).group(1) + "?videoId=" + id + "&language=en"
-                     for id, container in zip(video_id[-len(id_container):], id_container)]
-        # Try to download some extra videos which is referred by iframe
-        extra_ids = extra_youtube.findall(page)
-        video_id += [link[:YOUTUBE_VIDEO_ID_LENGTH] for link in
-                     extra_ids]
-        subsUrls += ['' for link in extra_ids]
-
-    video_link = ['http://youtube.com/watch?v=' + v_id
-                  for v_id in video_id]
-
-    if len(video_link) < 1:
-        print('WARNING: No downloadable video found.')
-        sys.exit(0)
-
+    ## get format / subtitles info before main loop
     if is_interactive:
         # Get Available Video formats
         os.system('youtube-dl -F %s' % video_link[-1])
@@ -402,53 +378,90 @@ def main():
 
         args.subtitles = input('Download subtitles (y/n)? ').lower() == 'y'
 
-    print("[info] Output directory: " + args.output_dir)
+    ## need to process week_loop a bit earlier. May be filter like "-w 4-6" or "-w 6,8,2" can be useful
+    if args.week == "*":
+        week_loop = range(1,numOfWeeks+1)
+    else:
+        week_loop = [w_number]
 
-    # Download Videos
-    c = 0
-    for v, s in zip(video_link, subsUrls):
-        c += 1
-        w_folder = removeDisallowedFilenameChars(w_name)
-        target_dir = os.path.join(args.output_dir,
-                                  directory_name(selected_course[0]),w_folder)
-        filename_prefix = str(c).zfill(2)
-        cmd = ["youtube-dl",
-               "-o", os.path.join(target_dir, filename_prefix + "-%(title)s.%(ext)s")]
-        if args.format:
-            cmd.append("-f")
-            # defaults to mp4 in case the requested format isn't available
-            cmd.append(args.format + '/mp4')
-        if args.subtitles:
-            cmd.append('--write-sub')
-        if args.ratelimit:
-            cmd.append('--rate-limit='+args.ratelimit)
-        cmd.append(str(v))
+    print("[info] Base output directory: " + args.output_dir)
+    ## Week loop
+    for current_week in week_loop:
+        links = weeks[current_week - 1][1]
+        w_name = weeks[current_week-1][0].strip()
+        print("[info] Processing item # %s" % current_week)
+        video_id = []
+        subsUrls = []
+        regexpSubs = re.compile(r'data-transcript-translation-url=(?:&#34;|")([^"&]*)(?:&#34;|")')
+        splitter = re.compile(r'data-streams=(?:&#34;|").*1.0[0]*:')
+        extra_youtube = re.compile(r'//w{0,3}\.youtube.com/embed/([^ \?&]*)[\?& ]')
+        for link in links:
+            print("Processing '%s'..." % link)
+            page = get_page_contents(link, headers)
 
-        print("[info] youtube-dl: " + ' '.join(cmd))
+            id_container = splitter.split(page)[1:]
+            video_id += [link[:YOUTUBE_VIDEO_ID_LENGTH] for link in
+                         id_container]
+            subsUrls += [BASE_URL + regexpSubs.search(container).group(1) + "?videoId=" + id + "&language=en"
+                         for id, container in zip(video_id[-len(id_container):], id_container)]
+            # Try to download some extra videos which is referred by iframe
+            extra_ids = extra_youtube.findall(page)
+            video_id += [link[:YOUTUBE_VIDEO_ID_LENGTH] for link in
+                         extra_ids]
+            subsUrls += ['' for link in extra_ids]
 
-        popen_youtube = Popen(cmd, stdout=PIPE, stderr=PIPE)
+        video_link = ['http://youtube.com/watch?v=' + v_id
+                      for v_id in video_id]
 
-        youtube_stdout = b''
-        enc = sys.getdefaultencoding()
-        while True:  # Save output to youtube_stdout while this being echoed
-            tmp = popen_youtube.stdout.read(1)
-            youtube_stdout += tmp
-            print(tmp.decode(enc), end="")
-            sys.stdout.flush()
-            # do it until the process finish and there isn't output
-            if tmp == b"" and popen_youtube.poll() is not None:
-                break
+        if len(video_link) < 1:
+            print('WARNING: No downloadable video found.')
+            sys.exit(0)
 
-        if args.subtitles:
-            filename = get_filename(target_dir, filename_prefix)
-            subs_filename = os.path.join(target_dir, filename + '.srt')
-            if not os.path.exists(subs_filename):
-                subs_string = edx_get_subtitle(s, headers)
-                if subs_string:
-                    print('[info] Writing edX subtitles: %s' % subs_filename)
-                    open(os.path.join(os.getcwd(), subs_filename),
-                         'wb+').write(subs_string.encode('utf-8'))
+        # Download Videos
+        c = 0
+        for v, s in zip(video_link, subsUrls):
+            c += 1
+            w_folder = removeDisallowedFilenameChars(w_name)
+            target_dir = os.path.join(args.output_dir,
+                                      directory_name(selected_course[0]),w_folder)
+            filename_prefix = str(c).zfill(2)
+            cmd = ["youtube-dl",
+                   "-o", os.path.join(target_dir, filename_prefix + "-%(title)s.%(ext)s")]
+            if args.format:
+                cmd.append("-f")
+                # defaults to mp4 in case the requested format isn't available
+                cmd.append(args.format + '/mp4')
+            if args.subtitles:
+                cmd.append('--write-sub')
+            if args.ratelimit:
+                cmd.append('--rate-limit='+args.ratelimit)
+            cmd.append(str(v))
 
+            print("[info] youtube-dl: " + ' '.join(cmd))
+
+            popen_youtube = Popen(cmd, stdout=PIPE, stderr=PIPE)
+
+            youtube_stdout = b''
+            enc = sys.getdefaultencoding()
+            while True:  # Save output to youtube_stdout while this being echoed
+                tmp = popen_youtube.stdout.read(1)
+                youtube_stdout += tmp
+                print(tmp.decode(enc), end="")
+                sys.stdout.flush()
+                # do it until the process finish and there isn't output
+                if tmp == b"" and popen_youtube.poll() is not None:
+                    break
+
+            if args.subtitles:
+                filename = get_filename(target_dir, filename_prefix)
+                subs_filename = os.path.join(target_dir, filename + '.srt')
+                if not os.path.exists(subs_filename):
+                    subs_string = edx_get_subtitle(s, headers)
+                    if subs_string:
+                        print('[info] Writing edX subtitles: %s' % subs_filename)
+                        open(os.path.join(os.getcwd(), subs_filename),
+                             'wb+').write(subs_string.encode('utf-8'))
+            ## / Week loop
 
 def get_filename(target_dir, filename_prefix):
     """ returns the basename for the corresponding filename_prefix """
