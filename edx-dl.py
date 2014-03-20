@@ -184,6 +184,7 @@ def parse_args():
     parser.add_argument('course_id',
                         action='store',
                         default=None,
+                        nargs='?',
                         help='target course id '
                         '(e.g., https://courses.edx.org/courses/BerkeleyX/CS191x/2013_Spring/info/)'
                         )
@@ -238,7 +239,19 @@ def parse_args():
                         default=False,
                         dest='list_weeks',
                         help='List weeks in course')
-
+    parser.add_argument('-e',
+                        '--list-enrolled',
+                        action='store_true',
+                        default=False,
+                        dest='list_enrolled',
+                        help='List enrolled courses')
+    parser.add_argument('-c',
+                        '--course_number',
+                        action='store',
+                        default=None,
+                        type = int,
+                        dest='course_number',
+                        help='Course number in list of -e')
     args = parser.parse_args()
     return args
 
@@ -296,11 +309,16 @@ def main():
         else:
             state = 'Not yet'
         courses.append((c_name, c_link, state))
-        if c_link.rstrip("/") == args.course_id.rstrip("/"):
+        if args.course_id and (c_link.rstrip("/") == args.course_id.rstrip("/")):
             c_number = c
             c_name_selected = c_name
     numOfCourses = len(courses)
-
+    ## url gets priority over "course number"
+    try:
+        c_number
+    except NameError:
+        if args.course_number:
+            c_number = args.course_number
     # Welcome and Choose Course
 
     print('Welcome %s' % USERNAME)
@@ -311,10 +329,13 @@ def main():
         c += 1
         print('%d - %s -> %s' % (c, course[0], course[2]))
 
-    if not c_number:
+    try:
+        c_number
+    except NameError:
         c_number = int(input('Enter Course Number: '))
     else:
-        print("[info] Using course " + str(c_number) + ": " + c_name_selected)
+        if c_number <= numOfCourses:
+            print("[info] Using course " + str(c_number) + ": " + COURSES[c_number - 1].h3.text.strip())
 
     while c_number > numOfCourses or courses[c_number - 1][2] != 'Started':
         print('Enter a valid Number for a Started Course ! between 1 and ',
