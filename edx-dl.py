@@ -403,7 +403,7 @@ def main():
     if args.week:
         if type(args.week) is int:
             week_loop = args.week
-            w_name = weeks[w_number-1][0].strip()
+            w_name = weeks[args.week-1][0].strip()
             print("[info] Downloading item # " + str(week_loop) + ": " + w_name)
         elif type(args.week) is list:
             week_loop = args.week
