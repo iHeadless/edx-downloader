@@ -83,6 +83,21 @@ def removeDisallowedFilenameChars(filename):
     cleanedFilename = unicodedata.normalize('NFKD', filename).encode('ASCII', 'ignore')
     return ''.join(c for c in cleanedFilename if c in validFilenameChars)
 
+def parseNumList(string):
+    if (string == "all"): return string
+    if (len(string.split('-')) > 1) and (len(string.split(',')) > 1) or (len(string.split('-')) > 2):
+        raise ArgumentTypeError("'Only one delimiter '-' or multiple ',' allowed by now'.")
+    if len(string.split('-')) > 1:
+        m = re.match(r'(\d+)(?:-(\d+))?$', string)
+        if not m:
+            raise ArgumentTypeError("'" + string + "' is not a range of number. Expected forms like '2', '1-5' or '1,3,7'.")
+        start = m.group(1)
+        end = m.group(2) or start
+        return range(int(start,10), int(end,10)+1)
+    if len(string.split(',')) > 1:
+        return map(int, string.split(','))
+    return string
+
 def change_openedx_site(site_name):
     global BASE_URL
     global EDX_HOMEPAGE
@@ -231,6 +246,8 @@ def parse_args():
     parser.add_argument('-w',
                         '--week',
                         action='store',
+                        nargs = 1,
+                        type=parseNumList,
                         help='Week number (number on the list of --list or "all")',
                         default=None)
     parser.add_argument('-l',
@@ -246,19 +263,36 @@ def parse_args():
                         dest='list_enrolled',
                         help='List enrolled courses')
     parser.add_argument('-c',
-                        '--course_number',
+                        '--course-number',
                         action='store',
+                        nargs = 1,
                         default=None,
-                        type = int,
+                        type = parseNumList,
                         dest='course_number',
                         help='Course number in list of -e')
+    parser.add_argument('-d',
+                        '--do-not-rename',
+                        action='store_true',
+                        default=False,
+                        dest='notrename',
+                        help='Do not try to search and rename files with changed sequence number')
     args = parser.parse_args()
     return args
 
 
 def main():
     args = parse_args()
-
+    ## clean args a bit. Maybe argparse can do it for me
+    ## TODO: add exception handling
+    ## TODO: clean args processing
+    if type(args.course_number) is list and type(args.course_number[0]) is list: args.course_number=args.course_number[0]
+    if type(args.course_number) is list and len(args.course_number)==1:
+        args.course_number = args.course_number[0]
+        if args.course_number.isdigit(): args.course_number = int(args.course_number)
+    if type(args.week) is list and type(args.week[0]) is list: args.week=args.week[0]
+    if type(args.week) is list and len(args.week)==1:
+        args.week = args.week[0]
+        if args.week.isdigit(): args.week = int(args.week)
     # if no args means we are calling the interactive version
     is_interactive = len(sys.argv) == 1
     if is_interactive:
@@ -367,28 +401,28 @@ def main():
     if args.list_weeks:
         sys.exit(1)
     if args.week:
-        if args.week.isdigit():
-            w_number = int(args.week)
+        if type(args.week) is int:
+            week_loop = args.week
             w_name = weeks[w_number-1][0].strip()
-            print("[info] Downloading item # " + str(w_number) + ": " + w_name)
+            print("[info] Downloading item # " + str(week_loop) + ": " + w_name)
+        elif type(args.week) is list:
+            week_loop = args.week
+            print("[info] Downloading items : " + str(week_loop))
         else:
             if args.week == "all":
-                w_number = numOfWeeks + 1
+                week_loop = range(1,numOfWeeks+1)
                 print("[info] Downloading all items")
             else:
-                print('[error] -w need number or "all"')
+                print('[error] -w need number, list or "all"')
                 sys.exit(2)
     else:
         w_number = int(input('Enter Your Choice: '))
-    while w_number > numOfWeeks + 1:
-        print('Enter a valid Number between 1 and %d' % (numOfWeeks + 1))
-        w_number = int(input('Enter Your Choice: '))
 
-    ## if w_number == numOfWeeks + 1:
-    ##    links = [link for week in weeks for link in week[1]]
-    ## else:
-    ##    links = weeks[w_number - 1][1]
-
+    ## TODO: check all list
+    if not week_loop:
+        while w_number > numOfWeeks + 1:
+            print('Enter a valid Number between 1 and %d' % (numOfWeeks + 1))
+            w_number = int(input('Enter Your Choice: '))
 
     ## get format / subtitles info before main loop
     if is_interactive:
@@ -398,12 +432,6 @@ def main():
         args.format = input('Choose Format code: ')
 
         args.subtitles = input('Download subtitles (y/n)? ').lower() == 'y'
-
-    ## need to process week_loop a bit earlier. May be filter like "-w 4-6" or "-w 6,8,2" can be useful
-    if args.week == "all":
-        week_loop = range(1,numOfWeeks+1)
-    else:
-        week_loop = [w_number]
 
     print("[info] Base output directory: " + args.output_dir)
     ## Week loop
