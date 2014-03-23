@@ -45,6 +45,7 @@ import re
 import sys
 import unicodedata
 import string
+import logging
 
 from subprocess import Popen, PIPE
 from datetime import timedelta, datetime
@@ -77,26 +78,46 @@ DEFAULT_USER_AGENTS = {"chrome": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/53
 
 USER_AGENT = DEFAULT_USER_AGENTS["edx"]
 
-validFilenameChars = "-_.() %s%s" % (string.ascii_letters, string.digits)
-
-def removeDisallowedFilenameChars(filename):
+def validate_filename(filename, default_name=""):
+    """
+    >>> validate_filename("&?foo*bar")
+    u'foobar'
+    >>> validate_filename("#$?*@")
+    u''
+    >>> validate_filename("#$?*@","course_dir")
+    u'course_dir'
+    """
+    validFilenameChars = "-_.() %s%s" % (string.ascii_letters, string.digits)
     cleanedFilename = unicodedata.normalize('NFKD', filename).encode('ASCII', 'ignore')
-    return ''.join(c for c in cleanedFilename if c in validFilenameChars)
+    fn = ''.join(c for c in cleanedFilename if c in validFilenameChars)
+    return fn if fn != "" else default_name
 
-def parseNumList(string):
-    if (string == "all"): return string
-    if (len(string.split('-')) > 1) and (len(string.split(',')) > 1) or (len(string.split('-')) > 2):
+def parseNumList(numlist):
+    """
+    >>> parseNumList("1")
+    u'1'
+    >>> parseNumList("5-9")
+    [5, 6, 7, 8, 9]
+    >>> parseNumList("1,8,16")
+    [1, 8, 16]
+    >>> parseNumList("1,3,5-7")
+    [1, 3, 5, 6, 7]
+    >>> parseNumList("all")
+    u'all'
+    """
+    if (numlist == "all"): return numlist
+    if (len(numlist.split('-')) > 1) and (len(numlist.split(',')) > 1) or (len(numlist.split('-')) > 2):
         raise ArgumentTypeError("'Only one delimiter '-' or multiple ',' allowed by now'.")
-    if len(string.split('-')) > 1:
-        m = re.match(r'(\d+)(?:-(\d+))?$', string)
+    if len(numlist.split('-')) > 1:
+        m = re.match(r'(\d+)(?:-(\d+))?$', numlist)
         if not m:
-            raise ArgumentTypeError("'" + string + "' is not a range of number. Expected forms like '2', '1-5' or '1,3,7'.")
+            raise ArgumentTypeError("'" + numlist + "' is not a range of number. Expected forms like '2', '1-5' or '1,3,7'.")
         start = m.group(1)
         end = m.group(2) or start
         return range(int(start,10), int(end,10)+1)
-    if len(string.split(',')) > 1:
-        return map(int, string.split(','))
-    return string
+    if len(numlist.split(',')) > 1:
+        return map(int, numlist.split(','))
+    return numlist
 
 def change_openedx_site(site_name):
     global BASE_URL
@@ -106,7 +127,7 @@ def change_openedx_site(site_name):
     global COURSEWARE_SEL
 
     if site_name not in OPENEDX_SITES.keys():
-        print("OpenEdX platform should be one of: %s" % ', '.join(OPENEDX_SITES.keys()))
+        logging.error("OpenEdX platform should be one of: %s" % ', '.join(OPENEDX_SITES.keys()))
         sys.exit(2)
     
     BASE_URL = OPENEDX_SITES[site_name]['url']
@@ -148,16 +169,6 @@ def get_page_contents(url, headers):
     return result.read().decode(charset)
 
 
-def directory_name(initial_name):
-    import string
-    allowed_chars = string.digits+string.ascii_letters+" _."
-    result_name = ""
-    for ch in initial_name:
-        if allowed_chars.find(ch) != -1:
-            result_name += ch
-    return result_name if result_name != "" else "course_folder"
-
-
 def edx_json2srt(o):
     i = 1
     output = ''
@@ -183,7 +194,7 @@ def edx_get_subtitle(url, headers):
         jsonObject = json.loads(jsonString)
         return edx_json2srt(jsonObject)
     except URLError as e:
-        print('[warning] edX subtitles (error:%s)' % e.reason)
+        logging.warning('[warning] edX subtitles (error:%s)' % e.reason)
         return None
 
 
@@ -270,18 +281,21 @@ def parse_args():
                         type = parseNumList,
                         dest='course_number',
                         help='Course number in list of -e')
-    parser.add_argument('-d',
-                        '--do-not-rename',
+    parser.add_argument('--test',
                         action='store_true',
                         default=False,
-                        dest='notrename',
-                        help='Do not try to search and rename files with changed sequence number')
+                        help=argparse.SUPPRESS)
+
     args = parser.parse_args()
     return args
 
 
 def main():
     args = parse_args()
+    if args.test:
+        import doctest
+        doctest.testmod(verbose=True)
+        sys.exit(0)
     ## clean args a bit. Maybe argparse can do it for me
     ## TODO: add exception handling
     ## TODO: clean args processing
@@ -303,7 +317,7 @@ def main():
     change_openedx_site(args.platform)
 
     if not args.username or not args.password:
-        print("You must supply username AND password to log-in")
+        logging.error("You must supply username AND password to log-in")
         sys.exit(2)
 
     # Prepare Headers
@@ -323,7 +337,7 @@ def main():
     response = urlopen(request)
     resp = json.loads(response.read().decode('utf-8'))
     if not resp.get('success', False):
-        print(resp.get('value', "Wrong Email or Password."))
+        logging.error(resp.get('value', "Wrong Email or Password."))
         exit(2)
 
     # Get user info/courses
@@ -345,7 +359,6 @@ def main():
         courses.append((c_name, c_link, state))
         if args.course_id and (c_link.rstrip("/") == args.course_id.rstrip("/")):
             c_number = c
-            c_name_selected = c_name
     numOfCourses = len(courses)
     ## url gets priority over "course number"
     try:
@@ -355,24 +368,24 @@ def main():
             c_number = args.course_number
     # Welcome and Choose Course
 
-    print('Welcome %s' % USERNAME)
-    print('You can access %d courses' % numOfCourses)
+    logging.info('Welcome %s' % USERNAME)
+    logging.info('You can access %d courses' % numOfCourses)
 
     c = 0
     for course in courses:
         c += 1
-        print('%d - %s -> %s' % (c, course[0], course[2]))
-
+        logging.info('%d - %s -> %s' % (c, course[0], course[2]))
+    if args.list_enrolled: sys.exit(0)
     try:
         c_number
     except NameError:
         c_number = int(input('Enter Course Number: '))
     else:
         if c_number <= numOfCourses:
-            print("[info] Using course " + str(c_number) + ": " + COURSES[c_number - 1].h3.text.strip())
+            logging.info("Using course " + str(c_number) + ": " + COURSES[c_number - 1].h3.text.strip())
 
     while c_number > numOfCourses or courses[c_number - 1][2] != 'Started':
-        print('Enter a valid Number for a Started Course ! between 1 and ',
+        logging.error('Enter a valid Number for a Started Course ! between 1 and ',
               numOfCourses)
         c_number = int(input('Enter Course Number: '))
     selected_course = courses[c_number - 1]
@@ -389,31 +402,31 @@ def main():
     numOfWeeks = len(weeks)
 
     # Choose Week or choose all
-    print('%s has %d weeks so far' % (selected_course[0], numOfWeeks))
+    logging.info('%s has %d weeks so far' % (selected_course[0], numOfWeeks))
     w = 0
     for week in weeks:
         w += 1
-        print('%d - Download %s videos' % (w, week[0].strip()))
+        logging.info('%d - Download %s videos' % (w, week[0].strip()))
     if is_interactive:
-        print('%d - Download them all' % (numOfWeeks + 1))
+        logging.info('%d - Download them all' % (numOfWeeks + 1))
     else:
-        print('"all" - Download them all')
+        logging.info('"all" - Download them all')
     if args.list_weeks:
         sys.exit(1)
     if args.week:
         if type(args.week) is int:
             week_loop = args.week
-            w_name = weeks[w_number-1][0].strip()
-            print("[info] Downloading item # " + str(week_loop) + ": " + w_name)
+            w_name = weeks[args.week-1][0].strip()
+            logging.info("Downloading item # " + str(week_loop) + ": " + w_name)
         elif type(args.week) is list:
             week_loop = args.week
-            print("[info] Downloading items : " + str(week_loop))
+            logging.info("Downloading items : " + str(week_loop))
         else:
             if args.week == "all":
                 week_loop = range(1,numOfWeeks+1)
-                print("[info] Downloading all items")
+                logging.info("Downloading all items")
             else:
-                print('[error] -w need number, list or "all"')
+                logging.error('-w need number, list or "all"')
                 sys.exit(2)
     else:
         w_number = int(input('Enter Your Choice: '))
@@ -421,31 +434,31 @@ def main():
     ## TODO: check all list
     if not week_loop:
         while w_number > numOfWeeks + 1:
-            print('Enter a valid Number between 1 and %d' % (numOfWeeks + 1))
+            logging.error('Enter a valid Number between 1 and %d' % (numOfWeeks + 1))
             w_number = int(input('Enter Your Choice: '))
 
     ## get format / subtitles info before main loop
     if is_interactive:
         # Get Available Video formats
         os.system('youtube-dl -F %s' % video_link[-1])
-        print('Choose a valid format or a set of valid format codes e.g. 22/17/...')
+        logging.error('Choose a valid format or a set of valid format codes e.g. 22/17/...')
         args.format = input('Choose Format code: ')
 
         args.subtitles = input('Download subtitles (y/n)? ').lower() == 'y'
 
-    print("[info] Base output directory: " + args.output_dir)
+    logging.info("Base output directory: " + args.output_dir)
     ## Week loop
     for current_week in week_loop:
         links = weeks[current_week - 1][1]
         w_name = weeks[current_week-1][0].strip()
-        print("[info] Processing item # %s  " % current_week)
+        logging.info("Processing item # %s  " % current_week)
         video_id = []
         subsUrls = []
         regexpSubs = re.compile(r'data-transcript-translation-url=(?:&#34;|")([^"&]*)(?:&#34;|")')
         splitter = re.compile(r'data-streams=(?:&#34;|").*1.0[0]*:')
         extra_youtube = re.compile(r'//w{0,3}\.youtube.com/embed/([^ \?&]*)[\?& ]')
         for link in links:
-            print("Processing '%s'..." % link)
+            logging.info("Processing '%s'..." % link)
             page = get_page_contents(link, headers)
 
             id_container = splitter.split(page)[1:]
@@ -463,16 +476,16 @@ def main():
                       for v_id in video_id]
 
         if len(video_link) < 1:
-            print('WARNING: No downloadable video found.')
+            logging.warning('WARNING: No downloadable video found.')
             sys.exit(0)
 
         # Download Videos
         c = 0
         for v, s in zip(video_link, subsUrls):
             c += 1
-            w_folder = removeDisallowedFilenameChars(w_name)
+            w_folder = validate_filename(w_name,"week " + str(week_loop[current_week]))
             target_dir = os.path.join(args.output_dir,
-                                      directory_name(selected_course[0]),w_folder)
+                                      validate_filename(selected_course[0],"course_folder"),w_folder)
             filename_prefix = str(c).zfill(2)
             cmd = ["youtube-dl",
                    "-o", os.path.join(target_dir, filename_prefix + "-%(title)s.%(ext)s")]
@@ -486,7 +499,7 @@ def main():
                 cmd.append('--rate-limit='+args.ratelimit)
             cmd.append(str(v))
 
-            print("[info] youtube-dl: " + ' '.join(cmd))
+            logging.info("youtube-dl: " + ' '.join(cmd))
 
             popen_youtube = Popen(cmd, stdout=PIPE, stderr=PIPE)
 
@@ -495,7 +508,7 @@ def main():
             while True:  # Save output to youtube_stdout while this being echoed
                 tmp = popen_youtube.stdout.read(1)
                 youtube_stdout += tmp
-                print(tmp.decode(enc), end="")
+                logging.info(tmp.decode(enc), end="")
                 sys.stdout.flush()
                 # do it until the process finish and there isn't output
                 if tmp == b"" and popen_youtube.poll() is not None:
@@ -507,7 +520,7 @@ def main():
                 if not os.path.exists(subs_filename):
                     subs_string = edx_get_subtitle(s, headers)
                     if subs_string:
-                        print('[info] Writing edX subtitles: %s' % subs_filename)
+                        logging.info('Writing edX subtitles: %s' % subs_filename)
                         open(os.path.join(os.getcwd(), subs_filename),
                              'wb+').write(subs_string.encode('utf-8'))
             ## / Week loop
@@ -519,15 +532,16 @@ def get_filename(target_dir, filename_prefix):
     # the info from the video_url or the current output, to avoid the
     # iteration from the current dir
     filenames = os.listdir(target_dir)
-    subs_filename = filename_prefix
+    # subs_filename = filename_prefix
     for name in filenames:  # Find the filename of the downloaded video
         if name.startswith(filename_prefix):
             (basename, ext) = os.path.splitext(name)
             return basename
 
 if __name__ == '__main__':
+    logging.basicConfig(level = logging.DEBUG)
     try:
         main()
     except KeyboardInterrupt:
-        print("\n\nCTRL-C detected, shutting down....")
+        logging.info("\n\nCTRL-C detected, shutting down....")
         sys.exit(0)
