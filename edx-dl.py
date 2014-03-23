@@ -46,6 +46,7 @@ import sys
 import unicodedata
 import string
 import logging
+import re
 
 from subprocess import Popen, PIPE
 from datetime import timedelta, datetime
@@ -95,29 +96,29 @@ def validate_filename(filename, default_name=""):
 def parseNumList(numlist):
     """
     >>> parseNumList("1")
-    u'1'
+    [1]
     >>> parseNumList("5-9")
     [5, 6, 7, 8, 9]
     >>> parseNumList("1,8,16")
     [1, 8, 16]
-    >>> parseNumList("1,3,5-7")
-    [1, 3, 5, 6, 7]
+    >>> parseNumList("1,3,5-7,8-10")
+    [1, 3, 5, 6, 7, 8, 9, 10]
     >>> parseNumList("all")
     u'all'
     """
     if (numlist == "all"): return numlist
-    if (len(numlist.split('-')) > 1) and (len(numlist.split(',')) > 1) or (len(numlist.split('-')) > 2):
-        raise ArgumentTypeError("'Only one delimiter '-' or multiple ',' allowed by now'.")
-    if len(numlist.split('-')) > 1:
-        m = re.match(r'(\d+)(?:-(\d+))?$', numlist)
-        if not m:
-            raise ArgumentTypeError("'" + numlist + "' is not a range of number. Expected forms like '2', '1-5' or '1,3,7'.")
-        start = m.group(1)
-        end = m.group(2) or start
-        return range(int(start,10), int(end,10)+1)
-    if len(numlist.split(',')) > 1:
-        return map(int, numlist.split(','))
-    return numlist
+    numlist_out = []
+    for numlist_item in re.split(r'[ ,]+',numlist):
+        if len(numlist_item.split('-')) == 2:
+            m = re.match(r'(\d+)(?:-(\d+))?$', numlist_item)
+            if not m:
+                raise ArgumentTypeError("'" + numlist + "' is not a range of number. Expected forms like '1-5'.")
+            start = m.group(1)
+            end = m.group(2) or start
+            numlist_out.extend(range(int(start,10), int(end,10)+1))
+        if numlist_item.isdigit():
+            numlist_out.append(int(numlist_item))
+    return numlist_out
 
 def change_openedx_site(site_name):
     global BASE_URL
