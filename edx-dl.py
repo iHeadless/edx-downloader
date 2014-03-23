@@ -539,7 +539,7 @@ def get_filename(target_dir, filename_prefix):
             return basename
 
 if __name__ == '__main__':
-    logging.basicConfig(level = logging.DEBUG)
+    logging.basicConfig(level = logging.DEBUG, format = u'%(message)s')
     try:
         main()
     except KeyboardInterrupt:
