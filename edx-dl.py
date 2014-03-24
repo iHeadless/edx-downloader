@@ -105,6 +105,10 @@ def parseNumList(numlist):
     [1, 3, 5, 6, 7, 8, 9, 10]
     >>> parseNumList("all")
     u'all'
+    >>> parseNumList("string,list")
+    []
+    >>> parseNumList("7-3")
+    []
     """
     if (numlist == "all"): return numlist
     numlist_out = []
@@ -112,10 +116,11 @@ def parseNumList(numlist):
         if len(numlist_item.split('-')) == 2:
             m = re.match(r'(\d+)(?:-(\d+))?$', numlist_item)
             if not m:
-                raise ArgumentTypeError("'" + numlist + "' is not a range of number. Expected forms like '1-5'.")
+                raise argparse.ArgumentTypeError("'" + numlist_item + "' is not a range of number. Expected forms like '1-5'.")
             start = m.group(1)
             end = m.group(2) or start
-            numlist_out.extend(range(int(start,10), int(end,10)+1))
+            if int(start) <= int(end):
+                numlist_out.extend(range(int(start,10), int(end,10)+1))
         if numlist_item.isdigit():
             numlist_out.append(int(numlist_item))
     return numlist_out
@@ -128,7 +133,7 @@ def change_openedx_site(site_name):
     global COURSEWARE_SEL
 
     if site_name not in OPENEDX_SITES.keys():
-        logging.error("OpenEdX platform should be one of: %s" % ', '.join(OPENEDX_SITES.keys()))
+        logging.error("[error] OpenEdX platform should be one of: %s" % ', '.join(OPENEDX_SITES.keys()))
         sys.exit(2)
     
     BASE_URL = OPENEDX_SITES[site_name]['url']
@@ -258,7 +263,7 @@ def parse_args():
     parser.add_argument('-w',
                         '--week',
                         action='store',
-                        nargs = 1,
+                        nargs = "*",
                         type=parseNumList,
                         help='Week number (number on the list of --list or "all")',
                         default=None)
@@ -277,7 +282,7 @@ def parse_args():
     parser.add_argument('-c',
                         '--course-number',
                         action='store',
-                        nargs = 1,
+                        nargs = "*",
                         default=None,
                         type = parseNumList,
                         dest='course_number',
@@ -301,13 +306,8 @@ def main():
     ## TODO: add exception handling
     ## TODO: clean args processing
     if type(args.course_number) is list and type(args.course_number[0]) is list: args.course_number=args.course_number[0]
-    if type(args.course_number) is list and len(args.course_number)==1:
-        args.course_number = args.course_number[0]
-        if args.course_number.isdigit(): args.course_number = int(args.course_number)
     if type(args.week) is list and type(args.week[0]) is list: args.week=args.week[0]
-    if type(args.week) is list and len(args.week)==1:
-        args.week = args.week[0]
-        if args.week.isdigit(): args.week = int(args.week)
+
     # if no args means we are calling the interactive version
     is_interactive = len(sys.argv) == 1
     if is_interactive:
@@ -318,7 +318,7 @@ def main():
     change_openedx_site(args.platform)
 
     if not args.username or not args.password:
-        logging.error("You must supply username AND password to log-in")
+        logging.error("[error] You must supply username AND password to log-in")
         sys.exit(2)
 
     # Prepare Headers
@@ -348,6 +348,7 @@ def main():
     USERNAME = data.find_all('span')[1].string
     COURSES = soup.find_all('article', 'course')
     courses = []
+    course_loop = []
     c = 0
     for COURSE in COURSES:
         c += 1
@@ -359,14 +360,8 @@ def main():
             state = 'Not yet'
         courses.append((c_name, c_link, state))
         if args.course_id and (c_link.rstrip("/") == args.course_id.rstrip("/")):
-            c_number = c
+            course_loop = [c]
     numOfCourses = len(courses)
-    ## url gets priority over "course number"
-    try:
-        c_number
-    except NameError:
-        if args.course_number:
-            c_number = args.course_number
     # Welcome and Choose Course
 
     logging.info('Welcome %s' % USERNAME)
@@ -377,154 +372,177 @@ def main():
         c += 1
         logging.info('%d - %s -> %s' % (c, course[0], course[2]))
     if args.list_enrolled: sys.exit(0)
-    try:
-        c_number
-    except NameError:
-        c_number = int(input('Enter Course Number: '))
-    else:
-        if c_number <= numOfCourses:
-            logging.info("Using course " + str(c_number) + ": " + COURSES[c_number - 1].h3.text.strip())
 
-    while c_number > numOfCourses or courses[c_number - 1][2] != 'Started':
-        logging.error('Enter a valid Number for a Started Course ! between 1 and ',
-              numOfCourses)
-        c_number = int(input('Enter Course Number: '))
-    selected_course = courses[c_number - 1]
-    COURSEWARE = selected_course[1].replace('info', 'courseware')
+    ## url gets priority over "course number"
 
-    ## Getting Available Weeks
-    courseware = get_page_contents(COURSEWARE, headers)
-    soup = BeautifulSoup(courseware)
-
-    data = soup.find(*COURSEWARE_SEL)
-    WEEKS = data.find_all('div')
-    weeks = [(w.h3.a.string, [BASE_URL + a['href'] for a in
-             w.ul.find_all('a')]) for w in WEEKS]
-    numOfWeeks = len(weeks)
-
-    # Choose Week or choose all
-    logging.info('%s has %d weeks so far' % (selected_course[0], numOfWeeks))
-    w = 0
-    for week in weeks:
-        w += 1
-        logging.info('%d - Download %s videos' % (w, week[0].strip()))
-    if is_interactive:
-        logging.info('%d - Download them all' % (numOfWeeks + 1))
-    else:
-        logging.info('"all" - Download them all')
-    if args.list_weeks:
-        sys.exit(1)
-    if args.week:
-        if type(args.week) is int:
-            week_loop = args.week
-            w_name = weeks[args.week-1][0].strip()
-            logging.info("Downloading item # " + str(week_loop) + ": " + w_name)
-        elif type(args.week) is list:
-            week_loop = args.week
-            logging.info("Downloading items : " + str(week_loop))
+    if args.course_number:
+        if type(args.course_number) is list:
+            if args.course_number == ['all']:
+                course_loop = range(1,numOfCourses+1)
+                logging.info("[info] Downloading all started courses")
+            else:
+                course_loop = args.course_number
+                logging.info("[info] Downloading courses : " + str(course_loop))
         else:
-            if args.week == "all":
-                week_loop = range(1,numOfWeeks+1)
-                logging.info("Downloading all items")
+            logging.error('-c need number, list or "all"')
+            sys.exit(2)
+
+    if course_loop == []:
+       if args.course_number:
+            course_loop = args.course_number
+       else:
+           course_loop = [int(input('Enter Course Number: '))]
+
+    if course_loop == []:
+        while c_number > numOfCourses or courses[c_number - 1][2] != 'Started':
+            logging.error('Enter a valid Number for a Started Course ! between 1 and %d', numOfCourses)
+            c_number = int(input('Enter Course Number: '))
+            course_loop = [c_number]
+
+    ## course loop
+
+    for current_course in course_loop:
+        if current_course <= numOfCourses:
+            logging.info("[info] Using course " + str(current_course) + ": " + COURSES[current_course - 1].h3.text.strip())
+        else:
+            continue
+
+        if courses[current_course - 1][2] != 'Started':
+            logging.info("[info] Course " + str(current_course) + ": " + COURSES[current_course - 1].h3.text.strip() + " is not started yet")
+            continue
+        selected_course = courses[current_course - 1]
+        COURSEWARE = selected_course[1].replace('info', 'courseware')
+
+        ## Getting Available Weeks
+        courseware = get_page_contents(COURSEWARE, headers)
+        soup = BeautifulSoup(courseware)
+
+        data = soup.find(*COURSEWARE_SEL)
+        WEEKS = data.find_all('div')
+        weeks = [(w.h3.a.string, [BASE_URL + a['href'] for a in
+                 w.ul.find_all('a')]) for w in WEEKS]
+        numOfWeeks = len(weeks)
+
+        # Choose Week or choose all
+        logging.info('%s has %d weeks so far' % (selected_course[0], numOfWeeks))
+        w = 0
+        for week in weeks:
+            w += 1
+            logging.info('%d - Download %s videos' % (w, week[0].strip()))
+        if is_interactive:
+            logging.info('%d - Download them all' % (numOfWeeks + 1))
+        else:
+            logging.info('"all" - Download them all')
+        if args.list_weeks:
+            sys.exit(1)
+        if args.week:
+            if type(args.week) is list:
+                if args.week == ['all']:
+                    week_loop = range(1,numOfWeeks+1)
+                    logging.info("[info] Downloading all items")
+                else:
+                    week_loop = args.week
+                    logging.info("[info] Downloading items : " + str(week_loop))
             else:
                 logging.error('-w need number, list or "all"')
                 sys.exit(2)
-    else:
-        w_number = int(input('Enter Your Choice: '))
-
-    ## TODO: check all list
-    if not week_loop:
-        while w_number > numOfWeeks + 1:
-            logging.error('Enter a valid Number between 1 and %d' % (numOfWeeks + 1))
+        else:
             w_number = int(input('Enter Your Choice: '))
 
-    ## get format / subtitles info before main loop
-    if is_interactive:
-        # Get Available Video formats
-        os.system('youtube-dl -F %s' % video_link[-1])
-        logging.error('Choose a valid format or a set of valid format codes e.g. 22/17/...')
-        args.format = input('Choose Format code: ')
+        ## TODO: check all list
+        if not week_loop:
+            while w_number > numOfWeeks + 1:
+                logging.error('Enter a valid Number between 1 and %d' % (numOfWeeks + 1))
+                w_number = int(input('Enter Your Choice: '))
 
-        args.subtitles = input('Download subtitles (y/n)? ').lower() == 'y'
+        ## get format / subtitles info before main loop
+        if is_interactive:
+            # Get Available Video formats
+            os.system('youtube-dl -F %s' % video_link[-1])
+            logging.error('Choose a valid format or a set of valid format codes e.g. 22/17/...')
+            args.format = input('Choose Format code: ')
 
-    logging.info("Base output directory: " + args.output_dir)
-    ## Week loop
-    for current_week in week_loop:
-        links = weeks[current_week - 1][1]
-        w_name = weeks[current_week-1][0].strip()
-        logging.info("Processing item # %s  " % current_week)
-        video_id = []
-        subsUrls = []
-        regexpSubs = re.compile(r'data-transcript-translation-url=(?:&#34;|")([^"&]*)(?:&#34;|")')
-        splitter = re.compile(r'data-streams=(?:&#34;|").*1.0[0]*:')
-        extra_youtube = re.compile(r'//w{0,3}\.youtube.com/embed/([^ \?&]*)[\?& ]')
-        for link in links:
-            logging.info("Processing '%s'..." % link)
-            page = get_page_contents(link, headers)
+            args.subtitles = input('Download subtitles (y/n)? ').lower() == 'y'
 
-            id_container = splitter.split(page)[1:]
-            video_id += [link[:YOUTUBE_VIDEO_ID_LENGTH] for link in
-                         id_container]
-            subsUrls += [BASE_URL + regexpSubs.search(container).group(1) + "?videoId=" + id + "&language=en"
-                         for id, container in zip(video_id[-len(id_container):], id_container)]
-            # Try to download some extra videos which is referred by iframe
-            extra_ids = extra_youtube.findall(page)
-            video_id += [link[:YOUTUBE_VIDEO_ID_LENGTH] for link in
-                         extra_ids]
-            subsUrls += ['' for link in extra_ids]
+        logging.info("[info] Base output directory: " + args.output_dir)
+        ## Week loop
+        for current_week in week_loop:
+            links = weeks[current_week - 1][1]
+            w_name = weeks[current_week-1][0].strip()
+            logging.info("[info] Processing item # %s  " % current_week)
+            video_id = []
+            subsUrls = []
+            regexpSubs = re.compile(r'data-transcript-translation-url=(?:&#34;|")([^"&]*)(?:&#34;|")')
+            splitter = re.compile(r'data-streams=(?:&#34;|").*1.0[0]*:')
+            extra_youtube = re.compile(r'//w{0,3}\.youtube.com/embed/([^ \?&]*)[\?& ]')
+            for link in links:
+                logging.info("[info] Processing '%s'..." % link)
+                page = get_page_contents(link, headers)
 
-        video_link = ['http://youtube.com/watch?v=' + v_id
-                      for v_id in video_id]
+                id_container = splitter.split(page)[1:]
+                video_id += [link[:YOUTUBE_VIDEO_ID_LENGTH] for link in
+                             id_container]
+                subsUrls += [BASE_URL + regexpSubs.search(container).group(1) + "?videoId=" + id + "&language=en"
+                             for id, container in zip(video_id[-len(id_container):], id_container)]
+                # Try to download some extra videos which is referred by iframe
+                extra_ids = extra_youtube.findall(page)
+                video_id += [link[:YOUTUBE_VIDEO_ID_LENGTH] for link in
+                             extra_ids]
+                subsUrls += ['' for link in extra_ids]
 
-        if len(video_link) < 1:
-            logging.warning('WARNING: No downloadable video found.')
-            sys.exit(0)
+            video_link = ['http://youtube.com/watch?v=' + v_id
+                          for v_id in video_id]
 
-        # Download Videos
-        c = 0
-        for v, s in zip(video_link, subsUrls):
-            c += 1
-            w_folder = validate_filename(w_name,"week " + str(week_loop[current_week]))
-            target_dir = os.path.join(args.output_dir,
-                                      validate_filename(selected_course[0],"course_folder"),w_folder)
-            filename_prefix = str(c).zfill(2)
-            cmd = ["youtube-dl",
-                   "-o", os.path.join(target_dir, filename_prefix + "-%(title)s.%(ext)s")]
-            if args.format:
-                cmd.append("-f")
-                # defaults to mp4 in case the requested format isn't available
-                cmd.append(args.format + '/mp4')
-            if args.subtitles:
-                cmd.append('--write-sub')
-            if args.ratelimit:
-                cmd.append('--rate-limit='+args.ratelimit)
-            cmd.append(str(v))
+            if len(video_link) < 1:
+                logging.warning('WARNING: No downloadable video found.')
+                sys.exit(0)
 
-            logging.info("youtube-dl: " + ' '.join(cmd))
+            # Download Videos
+            c = 0
+            for v, s in zip(video_link, subsUrls):
+                c += 1
+                w_folder = validate_filename(w_name,"week " + str(current_week))
+                target_dir = os.path.join(args.output_dir,
+                                          validate_filename(selected_course[0],"course_folder"),w_folder)
+                filename_prefix = str(c).zfill(2)
+                cmd = ["youtube-dl",
+                       "-o", os.path.join(target_dir, filename_prefix + "-%(title)s.%(ext)s")]
+                if args.format:
+                    cmd.append("-f")
+                    # defaults to mp4 in case the requested format isn't available
+                    cmd.append(args.format + '/mp4')
+                if args.subtitles:
+                    cmd.append('--write-sub')
+                if args.ratelimit:
+                    cmd.append('--rate-limit='+args.ratelimit)
+                cmd.append(str(v))
 
-            popen_youtube = Popen(cmd, stdout=PIPE, stderr=PIPE)
+                logging.info("[info] youtube-dl: " + ' '.join(cmd))
 
-            youtube_stdout = b''
-            enc = sys.getdefaultencoding()
-            while True:  # Save output to youtube_stdout while this being echoed
-                tmp = popen_youtube.stdout.read(1)
-                youtube_stdout += tmp
-                logging.info(tmp.decode(enc), end="")
-                sys.stdout.flush()
-                # do it until the process finish and there isn't output
-                if tmp == b"" and popen_youtube.poll() is not None:
-                    break
+                popen_youtube = Popen(cmd, stdout=PIPE, stderr=PIPE)
 
-            if args.subtitles:
-                filename = get_filename(target_dir, filename_prefix)
-                subs_filename = os.path.join(target_dir, filename + '.srt')
-                if not os.path.exists(subs_filename):
-                    subs_string = edx_get_subtitle(s, headers)
-                    if subs_string:
-                        logging.info('Writing edX subtitles: %s' % subs_filename)
-                        open(os.path.join(os.getcwd(), subs_filename),
-                             'wb+').write(subs_string.encode('utf-8'))
-            ## / Week loop
+                youtube_stdout = b''
+                enc = sys.getdefaultencoding()
+                while True:  # Save output to youtube_stdout while this being echoed
+                    tmp = popen_youtube.stdout.read(1)
+                    youtube_stdout += tmp
+                    print(tmp.decode(enc), end="")
+                    sys.stdout.flush()
+                    # do it until the process finish and there isn't output
+                    if tmp == b"" and popen_youtube.poll() is not None:
+                        break
+
+                if args.subtitles:
+                    filename = get_filename(target_dir, filename_prefix)
+                    subs_filename = os.path.join(target_dir, filename + '.srt')
+                    if not os.path.exists(subs_filename):
+                        subs_string = edx_get_subtitle(s, headers)
+                        if subs_string:
+                            logging.info('Writing edX subtitles: %s' % subs_filename)
+                            open(os.path.join(os.getcwd(), subs_filename),
+                                 'wb+').write(subs_string.encode('utf-8'))
+                ## /week loop
+        ## /course loop
 
 def get_filename(target_dir, filename_prefix):
     """ returns the basename for the corresponding filename_prefix """
@@ -544,5 +562,5 @@ if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:
-        logging.info("\n\nCTRL-C detected, shutting down....")
+        logging.info("[info] \n\nCTRL-C detected, shutting down....")
         sys.exit(0)
