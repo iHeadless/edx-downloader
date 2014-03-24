@@ -167,7 +167,7 @@ def get_page_contents(url, headers):
     Get the contents of the page at the URL given by url. While making the
     request, we use the headers given in the dictionary in headers.
     """
-    logger.debug("[info] url = " + url)
+    logging.debug("[info] url = " + url)
     result = urlopen(Request(url, None, headers))
     try:
         charset = result.headers.get_content_charset(failobj="utf-8")  # for python3
