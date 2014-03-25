@@ -79,6 +79,9 @@ DEFAULT_USER_AGENTS = {"chrome": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/53
 
 USER_AGENT = DEFAULT_USER_AGENTS["edx"]
 
+def v3():
+    return sys.version_info >= (3,0)
+
 def validate_filename(filename, default_name=""):
     """
     >>> validate_filename("&?foo*bar")
@@ -167,7 +170,7 @@ def get_page_contents(url, headers):
     Get the contents of the page at the URL given by url. While making the
     request, we use the headers given in the dictionary in headers.
     """
-    logging.debug("[info] url = " + url)
+    logging.debug("[debug] url = " + url)
     result = urlopen(Request(url, None, headers))
     try:
         charset = result.headers.get_content_charset(failobj="utf-8")  # for python3
@@ -383,7 +386,7 @@ def main():
                 logging.info("[info] Downloading all started courses")
             else:
                 course_loop = args.course_number
-                logging.info("[info] Downloading courses : " + str(course_loop))
+                logging.info("[info] Selected courses : " + str(course_loop))
         else:
             logging.error('-c need number, list or "all"')
             sys.exit(2)
@@ -522,7 +525,10 @@ def main():
 
                 popen_youtube = Popen(cmd, stdout=PIPE, stderr=PIPE)
 
-                youtube_stdout = b''
+                if v3():
+                    youtube_stdout = ''
+                else:
+                    youtube_stdout = b''
                 enc = sys.getdefaultencoding()
                 while True:  # Save output to youtube_stdout while this being echoed
                     tmp = popen_youtube.stdout.read(1)
@@ -559,7 +565,7 @@ def get_filename(target_dir, filename_prefix):
             return basename
 
 if __name__ == '__main__':
-    logging.basicConfig(level = logging.DEBUG, format = u'%(message)s')
+        logging.basicConfig(level = logging.DEBUG, format = '%(message)s')
     try:
         main()
     except KeyboardInterrupt:
