@@ -89,7 +89,7 @@ def bprint(data):
     print(data.strip())
 
 def youtube_get_filename(url, formatstr):
-    ydl = youtube_dl.YoutubeDL({'outtmpl': '%(title)s.%(ext)s', 'format': formatstr, 'restrictfilenames': True})
+    ydl = youtube_dl.YoutubeDL({'outtmpl': '%(title)s.%(ext)s', 'format': formatstr})
     # Add all the available extractors
     ydl.add_default_info_extractors()
 
