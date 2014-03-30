@@ -47,6 +47,8 @@ import unicodedata
 import string
 import logging
 import re
+import youtube_dl
+import glob
 
 from subprocess import Popen, PIPE
 from datetime import timedelta, datetime
@@ -79,21 +81,40 @@ DEFAULT_USER_AGENTS = {"chrome": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/53
 
 USER_AGENT = DEFAULT_USER_AGENTS["edx"]
 
-def v3():
-    return sys.version_info >= (3,0)
+PY3 = ( sys.version_info >= (3,0) )
+
+def bprint(data):
+    if not isinstance(data, str):
+        data = data.decode()
+    print(data.strip())
+
+def youtube_get_filename(url, formatstr):
+    ydl = youtube_dl.YoutubeDL({'outtmpl': '%(title)s.%(ext)s', 'format': formatstr})
+    # Add all the available extractors
+    ydl.add_default_info_extractors()
+
+    result = ydl.extract_info(url, download=False)
+
+    if 'entries' in result:
+        # Can be a playlist or a list of videos
+        video = result['entries'][0]
+    else:
+        # Just a video
+        video = result
+    return ydl.prepare_filename(video).encode("utf-8")
 
 def validate_filename(filename, default_name=""):
     """
-    >>> validate_filename("&?foo*bar")
-    u'foobar'
-    >>> validate_filename("#$?*@")
-    u''
-    >>> validate_filename("#$?*@","course_dir")
-    u'course_dir'
+    >>> bprint(validate_filename("&?foo*bar"))
+    foobar
+    >>> bprint(validate_filename("#$?*@"))
+    <BLANKLINE>
+    >>> bprint(validate_filename("#$?*@","course_dir"))
+    course_dir
     """
     validFilenameChars = "-_.() %s%s" % (string.ascii_letters, string.digits)
     cleanedFilename = unicodedata.normalize('NFKD', filename).encode('ASCII', 'ignore')
-    fn = ''.join(c for c in cleanedFilename if c in validFilenameChars)
+    fn = ''.join(c for c in cleanedFilename.decode("utf-8") if c in validFilenameChars)
     return fn if fn != "" else default_name
 
 def parseNumList(numlist):
@@ -107,13 +128,13 @@ def parseNumList(numlist):
     >>> parseNumList("1,3,5-7,8-10")
     [1, 3, 5, 6, 7, 8, 9, 10]
     >>> parseNumList("all")
-    u'all'
+    [0]
     >>> parseNumList("string,list")
     []
     >>> parseNumList("7-3")
     []
     """
-    if (numlist == "all"): return numlist
+    if (numlist == "all"): return [0]
     numlist_out = []
     for numlist_item in re.split(r'[ ,]+',numlist):
         if len(numlist_item.split('-')) == 2:
@@ -291,6 +312,12 @@ def parse_args():
                         type = parseNumList,
                         dest='course_number',
                         help='Course number in list of -e')
+    parser.add_argument('-d',
+                        '--do-not-rename',
+                        action='store_true',
+                        default=False,
+                        dest='notrename',
+                        help='Do not try to search and rename files with changed index')
     parser.add_argument('--test',
                         action='store_true',
                         default=False,
@@ -441,7 +468,7 @@ def main():
             sys.exit(1)
         if args.week:
             if type(args.week) is list:
-                if args.week == ['all']:
+                if args.week == [0]:
                     week_loop = range(1,numOfWeeks+1)
                     logging.info("[info] Downloading all items")
                 else:
@@ -452,7 +479,7 @@ def main():
                 sys.exit(2)
         else:
             w_number = int(input('Enter Your Choice: '))
-
+            week_loop = [w_number]
         ## TODO: check all list
         if not week_loop:
             while w_number > numOfWeeks + 1:
@@ -521,14 +548,27 @@ def main():
                     cmd.append('--rate-limit='+args.ratelimit)
                 cmd.append(str(v))
 
+                file_renamed = False
+                video_filename = youtube_get_filename(str(v), args.format + '/mp4').decode("utf-8")
+                v_fn_template = os.path.join(target_dir, ("[0-9]" * len(filename_prefix)) + "-" + video_filename)
+                v_fn_exact = os.path.join(target_dir, str(filename_prefix) + "-" + video_filename)
+                logging.info("[info] Filename template:" + v_fn_template)
+                search_file = glob.glob(os.path.abspath(v_fn_template))
+
+                if (len(search_file) == 1) and (search_file[0] != v_fn_exact):
+                    logging.info("[info] Found with different index:" + search_file[0])
+                    file_renamed = True
+                    if not args.notrename:
+                        logging.info("[info] Rename to:" + v_fn_exact)
+                        os.rename(search_file[0], v_fn_exact)
+                    else:
+                        logging.info("[info] No action")
+
                 logging.info("[info] youtube-dl: " + ' '.join(cmd))
 
                 popen_youtube = Popen(cmd, stdout=PIPE, stderr=PIPE)
 
-                if v3():
-                    youtube_stdout = ''
-                else:
-                    youtube_stdout = b''
+                youtube_stdout = b''
                 enc = sys.getdefaultencoding()
                 while True:  # Save output to youtube_stdout while this being echoed
                     tmp = popen_youtube.stdout.read(1)
@@ -541,6 +581,12 @@ def main():
 
                 if args.subtitles:
                     filename = get_filename(target_dir, filename_prefix)
+                    if file_renamed:
+                        v_fn_old_sub = os.path.splitext(search_file[0])[0] + '.srt'
+                        v_fn_exact_sub = os.path.splitext(v_fn_exact)[0] + '.srt'
+                        if os.path.isfile(v_fn_old_sub):
+                            logging.info("[info] Rename subs to:" + v_fn_exact_sub)
+                            os.rename(v_fn_old_sub, v_fn_exact_sub)
                     subs_filename = os.path.join(target_dir, filename + '.srt')
                     if not os.path.exists(subs_filename):
                         subs_string = edx_get_subtitle(s, headers)
