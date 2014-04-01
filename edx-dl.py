@@ -88,8 +88,12 @@ def bprint(data):
         data = data.decode()
     print(data.strip())
 
-def youtube_get_filename(url, formatstr):
-    ydl = youtube_dl.YoutubeDL({'outtmpl': '%(title)s.%(ext)s', 'format': formatstr})
+def youtube_get_filename(url, formatstr = None):
+    logging.debug('[debug] youtube_get_filename:%s, %s', url, formatstr )
+    ydl_options = {'outtmpl': '%(title)s.%(ext)s', 'nocheckcertificate': True}
+    if formatstr:
+        ydl_options['format'] = formatstr
+    ydl = youtube_dl.YoutubeDL(ydl_options)
     # Add all the available extractors
     ydl.add_default_info_extractors()
 
@@ -526,7 +530,8 @@ def main():
 
             if len(video_link) < 1:
                 logging.warning('WARNING: No downloadable video found.')
-                sys.exit(0)
+                continue
+                # sys.exit(0)
 
             # Download Videos
             c = 0
@@ -549,7 +554,10 @@ def main():
                 cmd.append(str(v))
 
                 file_renamed = False
-                video_filename = youtube_get_filename(str(v), args.format + '/mp4').decode("utf-8")
+                if args.format:
+                    video_filename = youtube_get_filename(str(v), args.format + '/mp4').decode("utf-8")
+                else:
+                    video_filename = youtube_get_filename(str(v)).decode("utf-8", "22/mp4")
                 v_fn_template = os.path.join(target_dir, ("[0-9]" * len(filename_prefix)) + "-" + video_filename)
                 v_fn_exact = os.path.join(target_dir, str(filename_prefix) + "-" + video_filename)
                 logging.info("[info] Filename template:" + v_fn_template)
